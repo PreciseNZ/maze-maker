@@ -29,25 +29,24 @@ impl Cell {
             is_start: false,
             is_end: false,
             is_solution: false,
-            wall_bottom: false,
-            wall_top: false,
-            wall_left: false,
-            wall_right: false,
-            move_direction: ' ',
+            wall_bottom: true,
+            wall_top: true,
+            wall_left: true,
+            wall_right: true,
+            move_direction: '?',
 
         }
     }
-
 }
 
 struct Maze {
     cells: Vec<Cell>,
     solution: Vec<Cell>,
     backstack: Vec<usize>,
-    columns: usize,
-    rows: usize,
+    size: usize,
     current_cell: usize,
     is_completed: bool,
+    show_solution: bool,
 }
 
 impl Maze {
@@ -56,29 +55,28 @@ impl Maze {
             cells: vec![],
             solution: vec![],
             backstack: vec![],
-            columns: 0,
-            rows: 0,
+            size: 0,
             current_cell: 0,
             is_completed: false,
+            show_solution: false,
         }
     }
 
-    pub fn create_maze(&mut self, number_of_rows: usize, number_of_columns: usize) {
-        self.rows = number_of_rows;
-        self.columns = number_of_columns;
+    pub fn create_maze(&mut self, size: usize) {
+        self.size = size;
         self.cells = Vec::new();
         self.backstack = Vec::new();
         self.solution = Vec::new();
 
-        println!("Creating maze");
-        for i in 0..self.columns {
-            for j in 0..self.rows {
+        print!("Creating maze... ");
+        for r in 0..self.size {
+            for c in 0..self.size {
                 // cells.len() provides the current count as a usize
                 let id = self.cells.len();
-                self.cells.push(Cell::new(id, i, j));
+                self.cells.push(Cell::new(id, c, r));
             }
         }
-        println!("Maze created with {} cells.", self.cells.len());
+        print!("with {} cells...", self.cells.len());
 
         self.add_boundary_walls();
 
@@ -88,11 +86,10 @@ impl Maze {
 
         let last_index = self.cells.len() - 1;
         self.cells[last_index].is_end = true;
-
         while !self.is_completed {
             self.update_maze();
         }
-        println!("Maze creation is complete.");
+        println!("done! Maze creation is complete.");
     }
 
     pub fn update_maze(&mut self) {
@@ -105,14 +102,9 @@ impl Maze {
         let current_cell = self.cells[self.current_cell].id;
         let current_row = self.cells[self.current_cell].row;
         let current_col = self.cells[self.current_cell].col;
-        if current_cell == self.cells.len() -1 {
-            self.is_completed = true;
-            return;
-        }
+        let neighbours = self.get_available_neighbours(current_row, current_col);
 
-        let neighbors = self.get_available_neighbors(current_row, current_col);
-
-        if neighbors.is_empty() {
+        if neighbours.is_empty() {
             if !self.backstack.is_empty() {
                 self.cells[self.current_cell].is_visited = true;
                 self.cells[self.current_cell].is_current = false;
@@ -122,62 +114,53 @@ impl Maze {
                 }
             }
             else {
-                println!("No more neighbors, and backstack is empty.");
                 self.is_completed = true;
             }
         } else {
-            let random_number = rand::random_range(0..neighbors.len());
-            print!("Cell: {}, Neighbors: {}, ", self.current_cell, neighbors.len());
-            let next_cell = neighbors[random_number];
+            let random_number = rand::random_range(0..neighbours.len());
+            let next_cell = neighbours[random_number];
 
-            for neighbor in neighbors {
-                print!("Neighbor: {}, ", neighbor);
-                if neighbor == next_cell {
-                    print!("Picked: {}, ", neighbor);
-                    // continue;
-                }
+            for neighbour in neighbours {
                 if let Some(target_left_cell) = current_cell.checked_sub(1) {
-                    if neighbor == target_left_cell {
-                        if neighbor == next_cell {
+                    if neighbour == target_left_cell {
+                        if neighbour == next_cell {
                             self.cells[self.current_cell].move_direction = '<';
-                            continue;
+                            self.cells[current_cell].wall_left = false;
+                            self.cells[neighbour].wall_right = false;
                         }
-                        self.cells[current_cell].wall_left = true;
-                        self.cells[neighbor].wall_right = true;
-                        print!("Left({}), ", neighbor);
                     }
                 }
-                if neighbor == current_cell + 1 {
-                    if neighbor == next_cell {
-                        self.cells[self.current_cell].move_direction = '>';
-                        continue;
+
+                if let Some(target_right) = self.get_linear_index(current_row, current_col + 1) {
+                    if neighbour == target_right {
+                        if neighbour == next_cell {
+                            self.cells[self.current_cell].move_direction = '>';
+                            self.cells[current_cell].wall_right = false;
+                            self.cells[neighbour].wall_left = false;
+                        }
                     }
-                    self.cells[current_cell].wall_right = true;
-                    self.cells[neighbor].wall_left = true;
-                    print!("Right({}), ", neighbor);
                 }
-                if let Some(target_top_cell) = current_cell.checked_sub(self.columns) {
-                    if neighbor == target_top_cell {
-                        if neighbor == next_cell {
+
+                if let Some(target_top_cell) = current_cell.checked_sub(self.size) {
+                    if neighbour == target_top_cell {
+                        if neighbour == next_cell {
                             self.cells[self.current_cell].move_direction = '^';
-                            continue;
+                            self.cells[current_cell].wall_top = false;
+                            self.cells[neighbour].wall_bottom = false;
                         }
-                        self.cells[current_cell].wall_top = true;
-                        self.cells[neighbor].wall_bottom = true;
-                        print!("Top({}), ", neighbor);
                     }
                 }
-                if neighbor == current_cell + self.columns {
-                    if neighbor == next_cell {
-                        self.cells[self.current_cell].move_direction = 'v';
-                        continue;
+
+                if let Some(target_bottom) = self.get_linear_index(current_row + 1, current_col) {
+                    if neighbour == target_bottom {
+                        if neighbour == next_cell {
+                            self.cells[self.current_cell].move_direction = 'v';
+                            self.cells[current_cell].wall_bottom = false;
+                            self.cells[neighbour].wall_top = false;
+                        }
                     }
-                    self.cells[current_cell].wall_bottom = true;
-                    self.cells[neighbor].wall_top = true;
-                    print!("Bottom({}), ", neighbor);
                 }
             }
-            println!();
             self.cells[current_cell].is_visited = true;
             self.cells[current_cell].is_current = false;
             self.cells[self.current_cell].is_solution = true;
@@ -189,71 +172,80 @@ impl Maze {
     }
 
     pub fn add_boundary_walls(&mut self) {
-        // 1. Top and Bottom boundary loops
-        for col in 0..self.columns {
+        // Top and Bottom boundary loops
+        for col in 0..self.size {
             if let Some(top_idx) = self.get_linear_index(0, col) {
                 self.cells[top_idx].wall_top = true;
             }
-            if let Some(bottom_idx) = self.get_linear_index(self.rows - 1, col) {
+            if let Some(bottom_idx) = self.get_linear_index(self.size - 1, col) {
                 self.cells[bottom_idx].wall_bottom = true;
             }
         }
 
-        // 2. Left and Right boundary loops
-        for row in 0..self.rows {
+        // Left and Right boundary loops
+        for row in 0..self.size {
             if let Some(left_idx) = self.get_linear_index(row, 0) {
                 self.cells[left_idx].wall_left = true;
             }
-            if let Some(right_idx) = self.get_linear_index(row, self.columns - 1) {
+            if let Some(right_idx) = self.get_linear_index(row, self.size - 1) {
                 self.cells[right_idx].wall_right = true;
             }
         }
     }
 
     pub fn get_linear_index(&self, row_index: usize, column_index: usize) -> Option<usize> {
-        if row_index >= self.rows || column_index >= self.columns {
+        if row_index >= self.size || column_index >= self.size {
             return None; // Index is out-of-bounds
         }
 
-        Some(row_index * self.columns + column_index)
+        Some((row_index * self.size) + column_index)
     }
 
-    pub fn get_available_neighbors(&self, cell_row: usize, cell_column: usize) -> Vec<usize> {
-        let mut neighbors = Vec::new();
-        if let Some(target_column) = cell_column.checked_sub(1) {
-            if let Some(top_idx) = self.get_linear_index(cell_row, target_column) {
-                if !self.cells[top_idx].is_visited {
-                    neighbors.push(top_idx);
-                }
+    pub fn get_available_neighbours(&self, cell_row: usize, cell_column: usize) -> Vec<usize> {
+        let mut neighbours = Vec::new();
+
+        // Force last cell to have no neighbours
+        if let Some(target_end_cell) = self.get_linear_index(cell_row, cell_column) {
+            if target_end_cell == self.cells.len() - 1 {
+                return neighbours;
             }
         }
-        if let Some(bottom_idx) = self.get_linear_index(cell_row, cell_column + 1) {
-            if !self.cells[bottom_idx].is_visited {
-                neighbors.push(bottom_idx);
+
+        if let Some(target_column) = cell_column.checked_sub(1) {
+            if let Some(left_idx) = self.get_linear_index(cell_row, target_column) {
+                if !self.cells[left_idx].is_visited {
+                    neighbours.push(left_idx);
+                }
+
+            }
+        }
+        if let Some(right_idx) = self.get_linear_index(cell_row, cell_column + 1) {
+            if !self.cells[right_idx].is_visited {
+                neighbours.push(right_idx);
             }
         }
 
         if let Some(target_row) = cell_row.checked_sub(1) {
-            if let Some(left_idx) = self.get_linear_index(target_row, cell_column) {
-                if !self.cells[left_idx].is_visited {
-                    neighbors.push(left_idx);
+            if let Some(top_idx) = self.get_linear_index(target_row, cell_column) {
+                if !self.cells[top_idx].is_visited {
+                    neighbours.push(top_idx);
                 }
             }
         }
 
-        if let Some(right_idx) = self.get_linear_index(cell_row + 1, cell_column) {
-            if !self.cells[right_idx].is_visited {
-                neighbors.push(right_idx);
+        if let Some(bottom_idx) = self.get_linear_index(cell_row + 1, cell_column) {
+            if !self.cells[bottom_idx].is_visited {
+                neighbours.push(bottom_idx);
             }
         }
 
-        neighbors
+        neighbours
     }
 
     pub fn print_maze(&mut self) {
-        for row in 0..self.rows {
+        for row in 0..self.size {
             // Print the top of the cell.
-            for col in 0..self.columns {
+            for col in 0..self.size {
                 if let Some(cell) = self.get_linear_index(row, col) {
                     print!("{}", self.print_top(cell));
                 }
@@ -261,20 +253,20 @@ impl Maze {
             print!("+");
             println!();
             // Print the middle of the cell.
-            for col in 0..self.columns {
+            for col in 0..self.size {
                 if let Some(cell) = self.get_linear_index(row, col) {
                     print!("{}", self.print_mid(cell));
                 }
             }
-            if row == self.rows - 1 {
-                print!("E");
+            if row == self.size - 1 {
+                print!(">");
             } else {
                 print!("|");
             }
             println!();
         }
         // Print the bottom of the maze (bottom will fit the top.
-        for _col in 0..self.columns {
+        for _col in 0..self.size {
             print!("{}", self.print_bottom());
         }
         print!("+");
@@ -284,13 +276,13 @@ impl Maze {
     pub fn print_top(&mut self, cell_index: usize) -> &'static str {
         let cell = &self.cells[cell_index];
         if cell.wall_top {
-            "+-"
+            "+---"
         } else {
-            "+ "
+            "+   "
         }
     }
     pub fn print_bottom(&mut self) -> &'static str {
-        "+-"
+        "+---"
     }
 
     pub fn print_mid(&mut self, cell_index: usize) -> String {
@@ -298,7 +290,7 @@ impl Maze {
         let mut result = String::with_capacity(3);
         if cell.wall_left {
             if cell.is_start {
-                result.push_str("S");
+                result.push_str(">");
             } else {
                 result.push_str("|");
             }
@@ -306,22 +298,14 @@ impl Maze {
             result.push_str(" ");
         }
 
-        // if cell.is_current {
-        //     result.push_str("X");
-        // } else if cell.is_start {
-        //     result.push_str("S");
-        // } else if cell.is_end {
-        //     result.push_str("E");
-        // } else {
-        //     result.push_str(cell.id.to_string().as_str());
-        // }
-
-        if cell.is_visited {
+        if self.show_solution && cell.is_solution {
+            result.push_str(" ");
             result.push(cell.move_direction);
+            result.push_str(" ");
         } else {
-            result.push_str("0");
+            result.push_str("   ");
         }
-        // result.push_str(" ");
+
         result
     }
 }
@@ -329,18 +313,23 @@ impl Maze {
 fn main() {
     let args: Vec<String> = env::args().collect();
     let mut maze = Maze::new();
-    let mut maze_size: usize = 10;
+    let mut maze_size: usize = 5;
     if let Some(val_str) = args.get(1) {
-        // Parse the String into a usize
         match val_str.parse::<usize>() {
             Ok(num) => maze_size = num,
-            Err(_) => eprintln!("Error: Please provide a valid positive integer."),
+            Err(_) => eprintln!("Usage: cargo run <number> <--show-solution>"),
         }
     } else {
-        eprintln!("Usage: cargo run <number>");
+        eprintln!("Defaulting to 10x10.");
+        eprintln!("Usage: cargo run <number> <--show-solution>");
+    }
+    if let Some(val_str) = args.get(2) {
+        if val_str == "--show-solution" {
+            maze.show_solution = true;
+        }
     }
 
-    maze.create_maze(maze_size, maze_size);
+    maze.create_maze(maze_size);
 
     maze.print_maze();
 }
